@@ -5,6 +5,7 @@
 
 #define PIN_LORA_RX 10
 #define PIN_LORA_TX 11
+#define PIN_BATT_GAUGE A0
 
 const long BAUD_SERIAL = 9600;
 const long BAUD_LORA = 9600;
@@ -31,9 +32,6 @@ int val_p_amps = 0;
      }
  }
 */
-StaticJsonBuffer<200> jsonBuffer;
-JsonObject& send_pkt = jsonBuffer.createObject();
-JsonObject& data = send_pkt.createNestedObject("data");
 
 void send_data(SoftwareSerial, JsonObject);
 
@@ -42,37 +40,50 @@ void setup() {
 
     pinMode(PIN_LORA_RX, INPUT);
     pinMode(PIN_LORA_TX, OUTPUT);
+    pinMode(PIN_BATT_GAUGE, INPUT);
+
     lora_serial.begin(BAUD_LORA);
-
-    send_pkt["Sensor Name"] = "Volts meter";
-
+    
     Serial.println("LoRa volts meter rdy!");
 }
 
 void loop() {
     CurrTime = millis();
 
+    StaticJsonBuffer<200> jsonBuffer;
+    JsonObject& send_pkt = jsonBuffer.createObject();
+
+    send_pkt["Sensor Name"] = "Volts meter";
+    JsonObject& data = send_pkt.createNestedObject("data");
+
     // Read sensor data
     if (CurrTime - PrevTime_data > SAMPLE_INTERVAL) {
         val_volts = random(100);
-        val_amps = random(0, 1);
     }
 
     // Write data to LoRa
     if (CurrTime - PrevTime_data > DATA_INTERVAL) {
         PrevTime_data = CurrTime;
 
-        data["Volts"] = val_volts;
-        data["Amps"] = val_amps;
+        data["Volts"] = analogRead(PIN_BATT_GAUGE);
+        data["TimeStamp"] = millis();
 
-        send_pkt.printTo(Serial);
+        String json_str;
+        send_pkt.printTo(json_str);
+
+        lora_serial.println("$Trup=" + json_str);
     }
 
     if (lora_serial.available()) {
-        Serial.print(lora_serial.read());
+        Serial.print(lora_serial.readString());
     }
 }
 
 void serialEvent() {
+    while (Serial.available()) {
+        String str = Serial.readString();
 
+        Serial.println(str);
+        lora_serial.print(str);
+    }
 }
